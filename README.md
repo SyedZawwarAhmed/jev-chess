@@ -3,6 +3,8 @@
 Play chess in the browser against [Jev](https://typesafe.sh), a System One model that
 answers typed questions instead of generating text.
 
+![jev-chess](docs/screenshot.png)
+
 Jev never writes a move. `python-chess` enumerates every legal move in the position and
 hands them over as the options of a single `Choice` question; Jev returns one option plus
 a probability over all of them. An illegal move is not something the model can express.
