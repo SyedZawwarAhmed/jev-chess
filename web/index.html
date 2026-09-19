@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jev-chess</title>
+<style>
+  :root {
+    --bg: #14151a; --panel: #1c1e26; --line: #2b2e3a;
+    --ink: #e8e6e3; --dim: #8d8f9c; --faint: #5a5d6c;
+    --light: #b9b2a5; --dark: #6f6a62;
+    --from: #b6a23c; --to: #d8c250; --dot: rgba(216,194,80,.55);
+    --accent: #6fb3a0; --warn: #d0715c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: flex; justify-content: center; padding: 22px 20px; overflow: auto;
+  }
+  .app { display: flex; flex-direction: column; height: 100%; min-height: 560px; }
+  header { margin-bottom: 14px; flex: none; }
+  h1 { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; margin: 0 0 2px; font-weight: 600; }
+  .sub { color: var(--dim); font-size: 12px; }
+  .sub b { color: var(--accent); font-weight: 600; }
+
+  /* two columns, tops aligned, equal height */
+  .cols { display: flex; gap: 22px; align-items: flex-start; flex: 1; min-height: 0; }
+  main { display: flex; flex-direction: column; gap: 10px; flex: none; }
+
+  #board { width: var(--bs, 560px); height: var(--bs, 560px); flex: none; display: grid;
+           grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr);
+           border: 1px solid var(--line); touch-action: none; }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center;
+        user-select: none; cursor: pointer; font-size: calc(var(--sq, 64px) * .93); }
+  .sq.l { background: var(--light); } .sq.d { background: var(--dark); }
+  .sq.from { background: var(--from); } .sq.to { background: var(--to); }
+  .sq.sel { box-shadow: inset 0 0 0 3px #f0e9d2; }
+  .sq.chk { background: var(--warn); }
+  .sq.hover { box-shadow: inset 0 0 0 4px rgba(240,233,210,.85); }
+  .sq .dot { position: absolute; width: 26%; height: 26%; border-radius: 50%;
+             background: var(--dot); pointer-events: none; }
+  .sq.occupied .dot { width: 86%; height: 86%; background: transparent;
+                      border: 5px solid var(--dot); }
+  .pc { font-size: 92%; line-height: 1; pointer-events: none;
+        font-family: "Apple Symbols", "Segoe UI Symbol", "Noto Sans Symbols 2", serif; }
+  .pc.w { color: #fbfaf7; text-shadow: 0 0 1px #000, 0 1px 2px rgba(0,0,0,.5);
+          -webkit-text-stroke: 1.4px #22242b; }
+  .pc.b { color: #22242b; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .pc.lifted { opacity: .22; }
+  #ghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(-50%, -50%);
+           filter: drop-shadow(0 6px 10px rgba(0,0,0,.55)); display: none; }
+
+  .coord { position: absolute; font-size: 10px; color: rgba(0,0,0,.42); pointer-events: none; }
+  .coord.f { right: 3px; bottom: 1px; } .coord.r { left: 3px; top: 1px; }
+
+  /* sidebar */
+  aside { width: 330px; flex: none; display: flex; flex-direction: column; gap: 14px;
+          height: var(--bs, 560px); min-height: 430px; }
+  .card { background: var(--panel); border: 1px solid var(--line); padding: 14px 15px; }
+  .card.grow { flex: 1; display: flex; flex-direction: column; min-height: 96px; }
+  .card h2 { font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+             color: var(--dim); margin: 0 0 11px; font-weight: 600; }
+
+  .cand { display: grid; grid-template-columns: 62px 1fr 44px; gap: 8px;
+          align-items: center; margin-bottom: 6px; }
+  .cand span:first-child { color: var(--ink); }
+  .cand .bar { height: 9px; background: #2a2d37; overflow: hidden; }
+  .cand .bar i { display: block; height: 100%; background: var(--accent); transition: width .18s; }
+  .cand .pct { text-align: right; color: var(--dim); font-size: 12px; }
+  .cand.chosen span:first-child { color: var(--to); font-weight: 700; }
+  .cand.chosen .bar i { background: var(--to); }
+  #cands.stale { opacity: .3; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 12px; }
+  .stats div { display: flex; justify-content: space-between; }
+  .stats span { color: var(--dim); }
+
+  #moves { font-size: 12.5px; flex: 1; overflow-y: auto;
+           column-count: 2; column-gap: 16px; color: var(--dim); }
+  #moves b { color: var(--ink); font-weight: 500; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, select {
+    background-color: #262933; color: var(--ink); border: 1px solid var(--line);
+    padding: 7px 12px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  select {
+    appearance: none; -webkit-appearance: none;
+    width: 100%; max-width: 100%; padding-right: 32px;
+    text-overflow: ellipsis;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238d8f9c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 11px center;
+  }
+  select:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+  #color { width: auto; min-width: 130px; }
+  button:hover { background: #30343f; }
+  button.primary { background: var(--accent); color: #10221d; border-color: var(--accent); font-weight: 600; }
+  label { font-size: 11px; color: var(--dim); display: block; margin-bottom: 4px;
+          letter-spacing: .08em; text-transform: uppercase; }
+  #status { min-height: 21px; font-size: 13px; flex: none; }
+  #status.think { color: var(--accent); }
+  #status.over { color: var(--to); font-weight: 600; }
+  .hint { font-size: 11px; color: var(--faint); line-height: 1.5; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
+  #status.think b { animation: pulse 1s ease-in-out infinite; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <h1>jev-chess</h1>
+    <div class="sub">Code lists every legal move. <b>Jev only picks one.</b></div>
+  </header>
+
+  <div class="cols">
+    <main>
+      <div id="board"></div>
+      <div id="status">Press <b>New game</b> to start.</div>
+    </main>
+
+    <aside>
+      <div class="card">
+        <h2>Jev's candidates</h2>
+        <div id="cands"><div class="hint">No move yet.</div></div>
+      </div>
+
+      <div class="card">
+        <h2>Last decision</h2>
+        <div class="stats">
+          <div><span>confidence</span><b id="s-conf">&ndash;</b></div>
+          <div><span>options</span><b id="s-opt">&ndash;</b></div>
+          <div><span>latency</span><b id="s-lat">&ndash;</b></div>
+          <div><span>tokens in</span><b id="s-tok">&ndash;</b></div>
+          <div><span>model</span><b id="s-mod">&ndash;</b></div>
+          <div><span>mode</span><b id="s-arm">&ndash;</b></div>
+        </div>
+      </div>
+
+      <div class="card grow">
+        <h2>Moves</h2>
+        <div id="moves" class="hint">&ndash;</div>
+      </div>
+
+      <div class="card">
+        <label>You play</label>
+        <div class="row" style="margin-bottom:12px">
+          <select id="color"><option value="white">White</option><option value="black">Black</option></select>
+        </div>
+        <div class="row">
+          <button class="primary" id="new">New game</button>
+          <button id="undo">Undo</button>
+          <button id="flip">Flip</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<span id="ghost"></span>
+
+<script>
+const GLYPH = { p:'♟', n:'♞', b:'♝', r:'♜', q:'♛', k:'♚' };
+const FILES = 'abcdefgh';
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const ARM = 'bare';   // option labels are plain SAN; Qxh5# still announces the mate
+const DASH = '–';
+const el = id => document.getElementById(id);
+const boardEl = el('board'), ghost = el('ghost');
+
+let game = null;      // last authoritative server state
+let view = null;      // what is on screen now; may be one move ahead of the server
+let human = 'white';
+let sel = null, flipped = false, busy = false;
+let drag = null;      // { from, pointerId, moved }
+
+/* ---------- position helpers ---------- */
+
+function parseFen(fen) {
+  const sq = {};
+  fen.split(' ')[0].split('/').forEach((row, r) => {
+    let f = 0;
+    for (const ch of row) {
+      if (/\d/.test(ch)) { f += +ch; continue; }
+      sq[FILES[f] + (8 - r)] = { type: ch.toLowerCase(), color: ch === ch.toUpperCase() ? 'w' : 'b' };
+      f++;
+    }
+  });
+  return sq;
+}
+
+const startView = () => ({ pieces: parseFen(START_FEN), last: null, check: false, turn: 'white', legal: [] });
+
+function viewFromServer(d) {
+  return { pieces: parseFen(d.fen), last: d.last, check: d.check, turn: d.turn, legal: d.legal };
+}
+
+/* Apply a move to the displayed pieces so your move lands before the server answers.
+   The server reply overwrites this a moment later, so it only has to look right. */
+function optimistic(v, uci) {
+  const pieces = { ...v.pieces };
+  const from = uci.slice(0, 2), to = uci.slice(2, 4), promo = uci[4];
+  const p = pieces[from];
+  if (!p) return v;
+  delete pieces[from];
+
+  if (p.type === 'k' && Math.abs(FILES.indexOf(to[0]) - FILES.indexOf(from[0])) === 2) {
+    const rank = from[1], kingside = to[0] === 'g';
+    const rookFrom = (kingside ? 'h' : 'a') + rank, rookTo = (kingside ? 'f' : 'd') + rank;
+    if (pieces[rookFrom]) { pieces[rookTo] = pieces[rookFrom]; delete pieces[rookFrom]; }
+  }
+  if (p.type === 'p' && from[0] !== to[0] && !pieces[to]) {
+    delete pieces[to[0] + from[1]];                       // en passant
+  }
+  pieces[to] = promo ? { type: promo, color: p.color } : p;
+  return { pieces, last: uci, check: false, turn: v.turn === 'white' ? 'black' : 'white', legal: [] };
+}
+
+/* ---------- rendering ---------- */
+
+function render() {
+  boardEl.innerHTML = '';
+  if (!view) view = startView();
+
+  const pieces = view.pieces;
+  const last = view.last ? [view.last.slice(0, 2), view.last.slice(2, 4)] : [];
+  const ranks = flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  const files = flipped ? [...FILES].reverse() : [...FILES];
+
+  let checkSq = null;
+  if (view.check) {
+    const side = view.turn === 'white' ? 'w' : 'b';
+    for (const [name, p] of Object.entries(pieces))
+      if (p.type === 'k' && p.color === side) checkSq = name;
+  }
+  const targets = sel ? (view.legal || []).filter(m => m.slice(0, 2) === sel).map(m => m.slice(2, 4)) : [];
+
+  for (const r of ranks) for (const f of files) {
+    const name = f + r;
+    const d = document.createElement('div');
+    d.className = 'sq ' + ((FILES.indexOf(f) + r) % 2 ? 'l' : 'd');
+    if (name === last[0]) d.classList.add('from');
+    if (name === last[1]) d.classList.add('to');
+    if (name === checkSq) d.classList.add('chk');
+    if (name === sel) d.classList.add('sel');
+    d.dataset.sq = name;
+
+    const p = pieces[name];
+    if (p) {
+      const s = document.createElement('span');
+      s.className = 'pc ' + p.color + (drag && drag.from === name && drag.moved ? ' lifted' : '');
+      s.textContent = GLYPH[p.type];
+      d.appendChild(s);
+    }
+    if (targets.includes(name)) {
+      if (p) d.classList.add('occupied');
+      const dot = document.createElement('i');
+      dot.className = 'dot';
+      d.appendChild(dot);
+    }
+    if (f === files[0]) d.insertAdjacentHTML('beforeend', '<span class="coord r">' + r + '</span>');
+    if (r === ranks[7]) d.insertAdjacentHTML('beforeend', '<span class="coord f">' + f + '</span>');
+    boardEl.appendChild(d);
+  }
+}
+
+function showCandidates(j) {
+  el('cands').classList.remove('stale');
+  if (!j) return;
+  const max = Math.max(...j.candidates.map(c => c.p), .01);
+  const chosen = j.san.replace(/[+#]$/, '');
+  el('cands').innerHTML = j.candidates.map(c =>
+    '<div class="cand ' + (c.move.replace(/[+#]$/, '') === chosen ? 'chosen' : '') + '">' +
+      '<span>' + c.move + '</span>' +
+      '<span class="bar"><i style="width:' + (c.p / max * 100).toFixed(1) + '%"></i></span>' +
+      '<span class="pct">' + (c.p * 100).toFixed(0) + '%</span>' +
+    '</div>').join('');
+  el('s-conf').textContent = j.confidence.toFixed(2);
+  el('s-opt').textContent = j.n_options;
+  el('s-lat').textContent = j.latency + 's';
+  el('s-tok').textContent = j.tokens == null ? DASH : j.tokens;
+  el('s-mod').textContent = j.model;
+  el('s-arm').textContent = j.arm;
+}
+
+function showMoves() {
+  const sans = game && game.pgn ? game.pgn.split(' ') : [];
+  if (!sans.length) { el('moves').innerHTML = '<span class="hint">' + DASH + '</span>'; return; }
+  let out = '';
+  for (let i = 0; i < sans.length; i += 2)
+    out += (i / 2 + 1) + '. <b>' + sans[i] + '</b> ' + (sans[i + 1] ? '<b>' + sans[i + 1] + '</b>' : '') + '<br>';
+  el('moves').innerHTML = out;
+  el('moves').scrollTop = el('moves').scrollHeight;
+}
+
+function setStatus(html, cls) {
+  el('status').className = cls || '';
+  el('status').innerHTML = html;
+}
+
+/* ---------- interaction ---------- */
+
+const myTurn = () => view && !busy && game && !game.over && view.turn === human;
+const legalFrom = sq => (view.legal || []).filter(m => m.slice(0, 2) === sq);
+
+function ownPieceAt(sq) {
+  const p = view && view.pieces[sq];
+  return !!p && p.color === (view.turn === 'white' ? 'w' : 'b');
+}
+
+function squareAt(x, y) {
+  const e = document.elementFromPoint(x, y);
+  const s = e && e.closest('.sq');
+  return s ? s.dataset.sq : null;
+}
+
+function tryMove(from, to) {
+  let uci = from + to;
+  if (legalFrom(from).some(m => m.startsWith(uci) && m.length === 5)) uci += 'q';   // auto-queen
+  if (!(view.legal || []).includes(uci)) return false;
+  sel = null;
+  playMove(uci);
+  return true;
+}
+
+boardEl.addEventListener('pointerdown', e => {
+  if (!myTurn()) return;
+  const sq = e.target.closest('.sq');
+  if (!sq) return;
+  const name = sq.dataset.sq;
+
+  if (sel && sel !== name && tryMove(sel, name)) { e.preventDefault(); return; }
+
+  if (!ownPieceAt(name)) { sel = null; render(); return; }
+  e.preventDefault();
+  drag = { from: name, pointerId: e.pointerId, moved: false };
+  sel = name;
+  boardEl.setPointerCapture(e.pointerId);
+  render();
+});
+
+boardEl.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  if (!drag.moved) {
+    drag.moved = true;
+    const p = view.pieces[drag.from];
+    ghost.textContent = GLYPH[p.type];
+    ghost.className = 'pc ' + p.color;
+    ghost.style.fontSize = getComputedStyle(boardEl.querySelector('.sq')).fontSize;
+    ghost.style.display = 'block';
+    render();
+  }
+  ghost.style.left = e.clientX + 'px';
+  ghost.style.top = e.clientY + 'px';
+
+  const over = squareAt(e.clientX, e.clientY);
+  boardEl.querySelectorAll('.sq.hover').forEach(s => s.classList.remove('hover'));
+  if (over && over !== drag.from && legalFrom(drag.from).some(m => m.slice(2, 4) === over)) {
+    const t = boardEl.querySelector('[data-sq="' + over + '"]');
+    if (t) t.classList.add('hover');
+  }
+});
+
+function endDrag(e) {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  const d = drag;
+  drag = null;
+  ghost.style.display = 'none';
+  boardEl.querySelectorAll('.sq.hover').forEach(s => s.classList.remove('hover'));
+  if (d.moved) {
+    const to = squareAt(e.clientX, e.clientY);
+    if (!to || to === d.from || !tryMove(d.from, to)) render();   // snap back, stay selected
+  } else {
+    render();                                                     // plain click: just select
+  }
+}
+boardEl.addEventListener('pointerup', endDrag);
+boardEl.addEventListener('pointercancel', endDrag);
+
+/* ---------- server ---------- */
+
+async function post(path, body) {
+  const res = await fetch(path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({}, body, { id: game && game.id, arm: ARM }))
+  });
+  return res.json();
+}
+
+function applyServer(d) {
+  game = d;
+  view = viewFromServer(d);
+  sel = null;
+  render(); showMoves(); showCandidates(d.jev);
+  if (d.over) setStatus('Game over ' + DASH + ' ' + d.result + ' (' + d.reason + ')', 'over');
+  else if (d.jev) setStatus('Jev played <b>' + d.jev.san + '</b> at ' +
+      (d.jev.candidates[0].p * 100).toFixed(0) + '% ' + DASH + ' your move.');
+  else setStatus('Your move.');
+}
+
+async function playMove(uci) {
+  busy = true;
+  view = optimistic(view, uci);              // your move appears immediately
+  render();
+  setStatus('Jev is <b>choosing…</b>', 'think');
+  el('cands').classList.add('stale');
+  try {
+    const d = await post('/api/move', { uci });
+    if (d.error) { setStatus('Error: ' + d.error, 'over'); view = viewFromServer(game); render(); return; }
+    applyServer(d);
+  } catch (err) {
+    setStatus('Error: ' + err.message, 'over');
+    if (game) { view = viewFromServer(game); render(); }
+  } finally {
+    busy = false;
+  }
+}
+
+el('new').onclick = async () => {
+  busy = true;
+  human = el('color').value;
+  flipped = human === 'black';
+  game = null; sel = null; view = startView(); render();
+  el('cands').innerHTML = '<div class="hint">No move yet.</div>';
+  ['s-conf','s-opt','s-lat','s-tok','s-mod','s-arm'].forEach(i => el(i).textContent = DASH);
+  setStatus(human === 'black' ? 'Jev is <b>choosing…</b>' : 'Your move.', human === 'black' ? 'think' : '');
+  try { applyServer(await post('/api/new', { human_color: human })); }
+  finally { busy = false; }
+};
+
+el('undo').onclick = async () => {
+  if (!game || busy) return;
+  busy = true;
+  try { applyServer(await post('/api/undo', {})); }
+  finally { busy = false; }
+};
+
+el('flip').onclick = () => { flipped = !flipped; render(); };
+
+/* Board fills whatever the window leaves after the header, status line and sidebar. */
+function fitBoard() {
+  const style = getComputedStyle(document.body);
+  const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+  const headerH = document.querySelector('header').getBoundingClientRect().height + 14;
+  const statusH = el('status').getBoundingClientRect().height + 10;
+  const availH = window.innerHeight - padY - headerH - statusH;
+  const availW = window.innerWidth - padX - 330 - 22;
+  const size = Math.max(320, Math.floor(Math.min(availH, availW)));
+  const root = document.documentElement.style;
+  root.setProperty('--bs', size + 'px');
+  root.setProperty('--sq', (size / 8) + 'px');
+}
+window.addEventListener('resize', fitBoard);
+fitBoard();
+
+view = startView();
+render();
+</script>
+</body>
+</html>

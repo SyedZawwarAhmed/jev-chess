@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+
+# local benchmark harness (Lichess puzzle runs), not part of the playable app
+scripts/
+data/
+out/
