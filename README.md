@@ -1,6 +1,6 @@
 # jev-chess
 
-Play chess in the browser against [Jev](https://typesafe.sh), a System One model that
+Play chess in the browser against [Jev](https://typesafe.ai), a System One model that
 answers typed questions instead of generating text.
 
 ![jev-chess](docs/screenshot.png)
